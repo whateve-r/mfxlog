@@ -37,8 +37,9 @@ input double InpSLMultiplier = 0.5;             // SL en términos de ATR
 
 input group "=== LIMITS ==="
 input int    InpMaxTradesPerDay = 3;            // Máximo trades diarios
-input int    InpTradingStartHour = 10;          // Inicio trading (EST)
-input int    InpTradingEndHour = 16;            // Fin trading (EST)
+input int    InpTradingStartHour = 8;           // Inicio trading (GMT)
+input int    InpTradingEndHour = 18;            // Fin trading (GMT)
+input int    InpServerTimeOffset = 0;           // Offset del servidor (ej: +2 para GMT+2)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
@@ -384,13 +385,30 @@ bool IsLowVolume() {
 }
 
 //+------------------------------------------------------------------+
-//| Verifica horario de trading                                      |
+//| Verifica horario de trading (v2.5 - GMT con offset)              |
 //+------------------------------------------------------------------+
 bool IsInTradingHours() {
     MqlDateTime current;
     TimeToStruct(TimeCurrent(), current);
     
-    return (current.hour >= InpTradingStartHour && current.hour < InpTradingEndHour);
+    // v2.5: Ajustar hora del servidor por offset
+    int adjustedHour = current.hour - InpServerTimeOffset;
+    if(adjustedHour < 0) adjustedHour += 24;
+    if(adjustedHour >= 24) adjustedHour -= 24;
+    
+    bool inHours = (adjustedHour >= InpTradingStartHour && adjustedHour < InpTradingEndHour);
+    
+    // v2.5: DEBUG cada 100 ticks para diagnosticar problemas de horario
+    static int debugCount = 0;
+    debugCount++;
+    if(debugCount % 100 == 0) {
+        Print("⏰ E4_Vol DEBUG: ServerTime=", current.hour, ":00 GMT | ",
+              "AdjustedTime=", adjustedHour, ":00 GMT | ",
+              "TradingRange=", InpTradingStartHour, "-", InpTradingEndHour, " | ",
+              "InHours=", inHours ? "✅ YES" : "❌ NO");
+    }
+    
+    return inHours;
 }
 
 //+------------------------------------------------------------------+

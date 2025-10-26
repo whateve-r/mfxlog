@@ -36,8 +36,8 @@ input bool   InpUseAggressiveLots = true;       // Usar lotaje agresivo
 input group "=== LIMITS ==="
 input int    InpMaxTradesPerDay = 2;            // Máximo trades diarios
 input double InpDailyProfitTarget = 3.0;        // Profit target diario (%)
-input int    InpTradingStartHour = 8;           // Hora inicio (UTC)
-input int    InpTradingEndHour = 18;            // Hora fin (UTC)
+input int    InpTradingStartHour = 0;           // v2.5: 24h para testing (antes 8)
+input int    InpTradingEndHour = 23;            // v2.5: 24h para testing (antes 18)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |

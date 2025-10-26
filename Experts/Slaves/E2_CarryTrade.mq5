@@ -221,7 +221,7 @@ void ExecuteCarryTrade() {
     }
 }
 //+------------------------------------------------------------------+
-//| v2.2: Ejecuta Carry Trade Single Pair (código original)          |
+//| v2.5: Ejecuta Carry Trade Single Pair con SL/TP                  |
 //+------------------------------------------------------------------+
 void ExecuteSingleCarryTrade() {
     // Calcular lotaje basado en volatilidad relativa
@@ -237,25 +237,51 @@ void ExecuteSingleCarryTrade() {
     longLots = riskMgr.NormalizeLots(longLots);
     shortLots = riskMgr.NormalizeLots(shortLots);
     
+    // v2.5 FIX: Calcular SL/TP basados en ATR de cada par
+    double atrLong = GetPairATR(InpHighYieldPair, PERIOD_H4, 14);
+    double atrShort = GetPairATR(InpLowYieldPair, PERIOD_H4, 14);
+    
+    if(atrLong == 0) atrLong = 0.001;  // Fallback
+    if(atrShort == 0) atrShort = 0.001;
+    
+    double longEntryPrice = SymbolInfoDouble(InpHighYieldPair, SYMBOL_ASK);
+    double shortEntryPrice = SymbolInfoDouble(InpLowYieldPair, SYMBOL_BID);
+    
+    // SL: 2.0 × ATR (dar espacio a carry trade - holding period largo)
+    // TP: 4.0 × ATR (R:R = 1:2 favorable)
+    double longSL = longEntryPrice - (2.0 * atrLong);
+    double longTP = longEntryPrice + (4.0 * atrLong);
+    
+    double shortSL = shortEntryPrice + (2.0 * atrShort);
+    double shortTP = shortEntryPrice - (4.0 * atrShort);
+    
     // Ejecutar Long en par de alto rendimiento
-    bool longResult = trade.Buy(longLots, InpHighYieldPair, 0, 0, 0, 
-                                 "E2_Carry_Long");
+    bool longResult = trade.Buy(longLots, InpHighYieldPair, 0, longSL, longTP, 
+                                 "E2_Carry_Long_v2.5");
     
     if(longResult) {
         g_longTicket = trade.ResultOrder();
         Print("✅ Long ", InpHighYieldPair, " @ ", longLots, " lots - Ticket: ", g_longTicket);
+        Print("   Entry: ", FormatDouble(longEntryPrice, 5), 
+              " | SL: ", FormatDouble(longSL, 5), 
+              " | TP: ", FormatDouble(longTP, 5),
+              " (", FormatDouble(atrLong * 2.0, 5), " pips SL)");
     } else {
         Print("❌ Error abriendo Long: ", GetLastError());
         return;
     }
     
     // Ejecutar Short en par de bajo rendimiento
-    bool shortResult = trade.Sell(shortLots, InpLowYieldPair, 0, 0, 0, 
-                                   "E2_Carry_Short");
+    bool shortResult = trade.Sell(shortLots, InpLowYieldPair, 0, shortSL, shortTP, 
+                                   "E2_Carry_Short_v2.5");
     
     if(shortResult) {
         g_shortTicket = trade.ResultOrder();
         Print("✅ Short ", InpLowYieldPair, " @ ", shortLots, " lots - Ticket: ", g_shortTicket);
+        Print("   Entry: ", FormatDouble(shortEntryPrice, 5), 
+              " | SL: ", FormatDouble(shortSL, 5), 
+              " | TP: ", FormatDouble(shortTP, 5),
+              " (", FormatDouble(atrShort * 2.0, 5), " pips SL)");
     } else {
         Print("❌ Error abriendo Short: ", GetLastError());
         // Cerrar long si short falló
@@ -269,9 +295,9 @@ void ExecuteSingleCarryTrade() {
     g_positionOpenTime = TimeCurrent();
     
     Print("==================================================");
-    Print("✅ CARRY TRADE COMPLETO");
-    Print("📈 Long: ", InpHighYieldPair, " x", longLots);
-    Print("📉 Short: ", InpLowYieldPair, " x", shortLots);
+    Print("✅ CARRY TRADE COMPLETO (v2.5 - SL/TP Protectors)");
+    Print("📈 Long: ", InpHighYieldPair, " x", longLots, " | R:R = 1:2");
+    Print("📉 Short: ", InpLowYieldPair, " x", shortLots, " | R:R = 1:2");
     Print("⚖️ Hedge Ratio: ", FormatDouble(hedgeRatio, 3));
     Print("🌪️ VIX: ", FormatDouble(GlobalComms::GetVIX(), 2));
     Print("==================================================");
@@ -281,19 +307,48 @@ void ExecuteSingleCarryTrade() {
 //| Calcula hedge ratio basado en volatilidad relativa               |
 //+------------------------------------------------------------------+
 double CalculateHedgeRatio() {
-    // Calcular ATR de ambos pares
-    double atrHigh = riskMgr.GetATR(PERIOD_D1, InpVolatilityPeriod, 0);
-    double atrLow = riskMgr.GetATR(PERIOD_D1, InpVolatilityPeriod, 0);
+    // v2.5 FIX: Calcular ATR de cada par específico (no usar _Symbol genérico)
+    double atrHigh = GetPairATR(InpHighYieldPair, PERIOD_H4, InpVolatilityPeriod);
+    double atrLow = GetPairATR(InpLowYieldPair, PERIOD_H4, InpVolatilityPeriod);
     
-    if(atrLow == 0) return InpHedgeRatio;
+    if(atrLow == 0 || atrHigh == 0) {
+        Print("⚠️ E2_Carry: No se pudo calcular ATR - Usando ratio fijo 1.0");
+        return 1.0;
+    }
     
     // Ratio = Vol(High) / Vol(Low)
     double ratio = atrHigh / atrLow;
     
     Print("📊 E2_Carry: Hedge Ratio = ", FormatDouble(ratio, 3), 
-          " (ATR High: ", FormatDouble(atrHigh, 5), " / ATR Low: ", FormatDouble(atrLow, 5), ")");
+          " (ATR ", InpHighYieldPair, ": ", FormatDouble(atrHigh, 5), 
+          " / ATR ", InpLowYieldPair, ": ", FormatDouble(atrLow, 5), ")");
     
     return ratio;
+}
+
+//+------------------------------------------------------------------+
+//| v2.5: Obtiene ATR de cualquier par (no solo _Symbol)             |
+//+------------------------------------------------------------------+
+double GetPairATR(string symbol, ENUM_TIMEFRAMES timeframe, int period) {
+    int atrHandle = iATR(symbol, timeframe, period);
+    if(atrHandle == INVALID_HANDLE) {
+        Print("⚠️ E2_Carry: Error creando ATR handle para ", symbol);
+        return 0.0;
+    }
+    
+    double atrBuffer[];
+    ArraySetAsSeries(atrBuffer, true);
+    
+    if(CopyBuffer(atrHandle, 0, 0, 1, atrBuffer) <= 0) {
+        Print("⚠️ E2_Carry: Error copiando ATR para ", symbol);
+        IndicatorRelease(atrHandle);
+        return 0.0;
+    }
+    
+    double atr = atrBuffer[0];
+    IndicatorRelease(atrHandle);
+    
+    return atr;
 }
 
 //+------------------------------------------------------------------+

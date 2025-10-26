@@ -16,10 +16,10 @@
 //+------------------------------------------------------------------+
 //| Input Parameters                                                  |
 //+------------------------------------------------------------------+
-input group "=== v2.3 MT5 CALENDAR SETTINGS ==="
+input group "=== v2.3 CALENDAR NEWS FILTER ==="
 input bool   InpUseCalendar = true;             // Usar MT5 Economic Calendar
 input string InpCountryCodes = "US,EU,GB";      // Códigos países (US,EU,GB,AU,etc)
-input ENUM_CALENDAR_EVENT_IMPORTANCE InpMinImportance = CALENDAR_IMPORTANCE_HIGH;  // Importancia mínima
+input ENUM_CALENDAR_EVENT_IMPORTANCE InpMinImportance = CALENDAR_IMPORTANCE_MEDIUM;  // v2.5: Bajado de HIGH a MEDIUM
 input double InpSurpriseThreshold = 5.0;        // Surprise Index mínimo (%)
 input int    InpNewsCheckIntervalMin = 15;      // Check cada X minutos
 input int    InpWaitAfterNewsMin = 5;           // Esperar X min después de noticia
@@ -236,7 +236,26 @@ void CheckCalendarAndTrade() {
     }
     
     if(ArraySize(values) > 0) {
-        Print("📊 E6_News v2.4: Procesando ", ArraySize(values), " eventos (caché ", cacheExpired ? "actualizado" : "válido", ")");
+        // v2.5: DEBUG - Contar eventos por importancia
+        static datetime lastDebugLog = 0;
+        if(TimeCurrent() - lastDebugLog > 3600) {  // Log cada 1h
+            int countHigh = 0, countMed = 0, countLow = 0, countQualified = 0;
+            for(int i = 0; i < ArraySize(values); i++) {
+                MqlCalendarEvent evt;
+                if(!CalendarEventById(values[i].event_id, evt)) continue;
+                if(evt.importance == CALENDAR_IMPORTANCE_HIGH) countHigh++;
+                else if(evt.importance == CALENDAR_IMPORTANCE_MEDIUM) countMed++;
+                else countLow++;
+                
+                if(evt.importance >= InpMinImportance) countQualified++;
+            }
+            Print("📊 E6_DEBUG: Total=", ArraySize(values), " | HIGH=", countHigh, 
+                  " MED=", countMed, " LOW=", countLow, " | Qualified>=", 
+                  EnumToString(InpMinImportance), "=", countQualified);
+            lastDebugLog = TimeCurrent();
+        }
+        
+        Print("📊 E6_News v2.5: Procesando ", ArraySize(values), " eventos (caché ", cacheExpired ? "actualizado" : "válido", ")");
         
         // Iterar sobre cada valor de evento
         for(int i = 0; i < ArraySize(values); i++) {

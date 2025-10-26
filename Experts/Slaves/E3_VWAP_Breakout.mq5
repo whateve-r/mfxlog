@@ -38,11 +38,18 @@ input group "=== v2.2 H1 TREND FILTER ==="
 input bool   InpUseH1Trend = true;              // Usar H1 EMA 50 Trend Filter
 input int    InpH1EMA = 50;                     // H1 EMA Period
 
+input group "=== v2.5 FILTER CONTROL ==="
+input bool   InpRequireVolumeFilter = false;    // Requerir volumen bajo (contradice breakout - desactivar)
+input bool   InpRequireH1Align = true;          // Requerir alineación H1 EMA (recomendado)
+input bool   InpRequireLRC = false;             // Requerir Linear Regression (muy restrictivo)
+input bool   InpRequireUTBot = false;           // Requerir UT Bot (muy restrictivo)
+input int    InpMinADX = 15;                    // ADX mínimo (bajado de 20 a 15)
+
 input group "=== RISK MANAGEMENT ==="
 input double InpRiskPercent = 0.5;              // Riesgo por trade (%)
 
 input group "=== LIMITS ==="
-input int    InpMaxTradesPerDay = 2;            // Máximo trades diarios
+input int    InpMaxTradesPerDay = 5;            // Máximo trades diarios (aumentado de 2 a 5)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
@@ -197,24 +204,24 @@ void OnTick() {
         return;
     }
     
-    // Filtro volumen bajo
-    if(!IsLowVolume()) {
+    // v2.5: Filtro volumen OPCIONAL (contradice breakouts - desactivado por defecto)
+    if(InpRequireVolumeFilter && !IsLowVolume()) {
         return;
     }
     
-    // v2.2: Filtro H1 EMA 50 - Solo operar a favor de tendencia H1
-    if(InpUseH1Trend && !CheckH1Trend()) {
+    // v2.5: Filtro H1 EMA 50 - OPCIONAL pero recomendado
+    if(InpRequireH1Align && InpUseH1Trend && !CheckH1Trend()) {
         return;
     }
     
-    // v2.2: Filtro Linear Regression - Evitar rangos laterales
-    if(InpUseLRC && !CheckLRCTrend()) {
+    // v2.5: Filtro Linear Regression - OPCIONAL (muy restrictivo)
+    if(InpRequireLRC && InpUseLRC && !CheckLRCTrend()) {
         return;
     }
     
-    // v2.2: UT Bot - Confirmar dirección con trailing
+    // v2.5: UT Bot - OPCIONAL (muy restrictivo)
     int utbotSignal = 0;  // 1=BUY, -1=SELL, 0=neutral
-    if(InpUseUTBot) {
+    if(InpRequireUTBot && InpUseUTBot) {
         utbotSignal = GetUTBotSignal();
         if(utbotSignal == 0) return;  // No hay señal clara
     }
